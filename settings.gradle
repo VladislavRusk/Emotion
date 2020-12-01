@@ -1,0 +1,4 @@
+include ':java'
+include ':java'
+include ':app'
+rootProject.name='Covid_ID'
