@@ -169,7 +169,7 @@ public class ClassifierActivity extends edu.ilab.cs663.classification.CameraActi
                             if (counter <= 12 && counter >= 2) {
                                 temp = classifier.getFrames(rgbFrameBitmap, sensorOrientation);
                             }
-                            if (counter == 300)
+                            if (counter == 50)
                                 counter = 0;
 
                             runOnUiThread(

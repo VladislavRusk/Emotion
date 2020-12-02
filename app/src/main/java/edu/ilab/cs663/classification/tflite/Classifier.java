@@ -371,7 +371,7 @@ public abstract class Classifier {
     Map<String,Float> temp = new HashMap<String, Float>();
 //    String[] theLabels = {"disgust", "fear", "happiness", "others", "repression", "sadness", "surprise"};
     for (int i = 0; i < classes; i++) {
-      temp.put(labels.get(i) + String.valueOf(foundFace), results[i]);
+      temp.put(labels.get(i) + " " + String.valueOf(foundFace), results[i]);
     }
     return temp;
   }
