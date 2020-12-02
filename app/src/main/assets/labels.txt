@@ -1,7 +1,5 @@
 disgust
-fear
 happiness
-others
+anger
 repression
-sadness
 surprise

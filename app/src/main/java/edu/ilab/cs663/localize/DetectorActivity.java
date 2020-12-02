@@ -76,9 +76,9 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   private static final Logger LOGGER = new Logger();
 
   // Configuration values for the prepackaged SSD model.
-  private static final int TF_OD_API_INPUT_SIZE = 300;
-  private static final boolean TF_OD_API_IS_QUANTIZED = true;
-  private static final String TF_OD_API_MODEL_FILE = "detect.tflite";
+  private static final int TF_OD_API_INPUT_SIZE = 512;
+  private static final boolean TF_OD_API_IS_QUANTIZED = false;
+  private static final String TF_OD_API_MODEL_FILE = "efficientDet.tflite";
   private static final String TF_OD_API_LABELS_FILE = "file:///android_asset/labelmap.txt";
   private static final DetectorMode MODE = DetectorMode.TF_OD_API;
   // Minimum detection confidence to track a detection.
@@ -111,8 +111,8 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
   @Override
   public void onPreviewSizeChosen(final Size size, final int rotation) {
     final float textSizePx =
-        TypedValue.applyDimension(
-            TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, getResources().getDisplayMetrics());
+            TypedValue.applyDimension(
+                    TypedValue.COMPLEX_UNIT_DIP, TEXT_SIZE_DIP, getResources().getDisplayMetrics());
     borderedText = new BorderedText(textSizePx);
     borderedText.setTypeface(Typeface.MONOSPACE);
 
@@ -124,19 +124,19 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
     try {
       detector =
-          TFLiteObjectDetectionAPIModel.create(
-              getAssets(),
-              TF_OD_API_MODEL_FILE,
-              TF_OD_API_LABELS_FILE,
-              TF_OD_API_INPUT_SIZE,
-              TF_OD_API_IS_QUANTIZED);
+              TFLiteObjectDetectionAPIModel.create(
+                      getAssets(),
+                      TF_OD_API_MODEL_FILE,
+                      TF_OD_API_LABELS_FILE,
+                      TF_OD_API_INPUT_SIZE,
+                      TF_OD_API_IS_QUANTIZED);
       cropSize = TF_OD_API_INPUT_SIZE;
     } catch (final IOException e) {
       e.printStackTrace();
       LOGGER.e(e, "Exception initializing classifier!");
       Toast toast =
-          Toast.makeText(
-              getApplicationContext(), "Classifier could not be initialized", Toast.LENGTH_SHORT);
+              Toast.makeText(
+                      getApplicationContext(), "Classifier could not be initialized", Toast.LENGTH_SHORT);
       toast.show();
       finish();
     }
@@ -156,25 +156,25 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     croppedBitmap = Bitmap.createBitmap(cropSize, cropSize, Config.ARGB_8888);
 
     frameToCropTransform =
-        ImageUtils.getTransformationMatrix(
-            previewWidth, previewHeight,
-            cropSize, cropSize,
-            sensorOrientation, MAINTAIN_ASPECT);
+            ImageUtils.getTransformationMatrix(
+                    previewWidth, previewHeight,
+                    cropSize, cropSize,
+                    sensorOrientation, MAINTAIN_ASPECT);
 
     cropToFrameTransform = new Matrix();  //identity matrix initially
     frameToCropTransform.invert(cropToFrameTransform);  //calculating the cropToFrameTransform as the inversion of the frameToCropTransform
 
     trackingOverlay = (OverlayView) findViewById(R.id.tracking_overlay);
     trackingOverlay.addCallback(
-        new DrawCallback() {
-          @Override
-          public void drawCallback(final Canvas canvas) {
-            tracker.draw(canvas);
-            if (isDebug()) {
-              tracker.drawDebug(canvas);
-            }
-          }
-        });
+            new DrawCallback() {
+              @Override
+              public void drawCallback(final Canvas canvas) {
+                tracker.draw(canvas);
+                if (isDebug()) {
+                  tracker.drawDebug(canvas);
+                }
+              }
+            });
 
     tracker.setFrameConfiguration(previewWidth, previewHeight, sensorOrientation);
 
@@ -206,7 +206,7 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     final Canvas canvas = new Canvas(croppedBitmap);
     //why working in portrait mode and not horizontal
     //canvas.drawBitmap(rgbFrameBitmap,new Matrix(), null);   //need to only rotate it.
-   // canvas.drawBitmap(croppedBitmap, cropToFrameTransform, null); //try this later???
+    // canvas.drawBitmap(croppedBitmap, cropToFrameTransform, null); //try this later???
     canvas.drawBitmap(rgbFrameBitmap, frameToCropTransform, null);   ///IS THIS WHERE DRAWING THE IMAGE??  using frameToCropTransform --GUESS frameToCropTransform is not rotating correct???
     // For examining the actual TF input.
     if (SAVE_PREVIEW_BITMAP) {
@@ -214,40 +214,40 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
     }
 
     runInBackground(
-        new Runnable() {
-          @Override
-          public void run() {
-            LOGGER.i("Running detection on image " + currTimestamp);
-            final long startTime = SystemClock.uptimeMillis();
-            final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);  //performing detection on croppedBitmap
-            lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
+            new Runnable() {
+              @Override
+              public void run() {
+                LOGGER.i("Running detection on image " + currTimestamp);
+                final long startTime = SystemClock.uptimeMillis();
+                final List<Classifier.Recognition> results = detector.recognizeImage(croppedBitmap);  //performing detection on croppedBitmap
+                lastProcessingTimeMs = SystemClock.uptimeMillis() - startTime;
 
 
-            cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
-            final Canvas canvas = new Canvas(cropCopyBitmap);   //create canvas to draw bounding boxes inside of which will be displayed in OverlayView
-            final Paint paint = new Paint();
-            paint.setColor(Color.RED);
-            paint.setStyle(Style.STROKE);
-            paint.setStrokeWidth(2.0f);
+                cropCopyBitmap = Bitmap.createBitmap(croppedBitmap);
+                final Canvas canvas = new Canvas(cropCopyBitmap);   //create canvas to draw bounding boxes inside of which will be displayed in OverlayView
+                final Paint paint = new Paint();
+                paint.setColor(Color.RED);
+                paint.setStyle(Style.STROKE);
+                paint.setStrokeWidth(2.0f);
 
-            float minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
-            switch (MODE) {
-              case TF_OD_API:
-                minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
-                break;
-            }
+                float minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
+                switch (MODE) {
+                  case TF_OD_API:
+                    minimumConfidence = MINIMUM_CONFIDENCE_TF_OD_API;
+                    break;
+                }
 
-            final List<Classifier.Recognition> mappedRecognitions =
-                new LinkedList<Classifier.Recognition>();
+                final List<Classifier.Recognition> mappedRecognitions =
+                        new LinkedList<Classifier.Recognition>();
 
-            int saveImageOnceFlag = 1;
-            String imageFileURL = "";
-            for (final Classifier.Recognition result : results) {
-              final RectF location = result.getLocation();
-              if (location != null && result.getConfidence() >= minimumConfidence) {
-                canvas.drawRect(location, paint);  //draw in the canvas the bounding boxes--> where is this used???? nowhere???
+                int saveImageOnceFlag = 1;
+                String imageFileURL = "";
+                for (final Classifier.Recognition result : results) {
+                  final RectF location = result.getLocation();
+                  if (location != null && result.getConfidence() >= minimumConfidence) {
+                    canvas.drawRect(location, paint);  //draw in the canvas the bounding boxes--> where is this used???? nowhere???
 
-
+/*
                 //==============================================================
                 //COVID: code to store image to CloudStore (if any results have result.getConfidence() > minimumConfidence
                 //  ONLY store one time regardless of number of recognition results.
@@ -315,51 +315,51 @@ public class DetectorActivity extends CameraActivity implements OnImageAvailable
 
                 }
                 //###############################################
+*/
+                    cropToFrameTransform.mapRect(location);  //transforms using Matrix the bounding box to the correct transformed coordinates
 
-                cropToFrameTransform.mapRect(location);  //transforms using Matrix the bounding box to the correct transformed coordinates
-
-                result.setLocation(location); // reset the newly transformed rectangle (location) representing bounding box inside the result
-                mappedRecognitions.add(result);  //add the result to a linked list
-
-
+                    result.setLocation(location); // reset the newly transformed rectangle (location) representing bounding box inside the result
+                    mappedRecognitions.add(result);  //add the result to a linked list
 
 
-              }
-            }
 
-            tracker.trackResults(mappedRecognitions, currTimestamp);  //DOES DRAWING:  OverlayView to dispaly the recognition bounding boxes that have been transformed and stored in LL mappedRecogntions
-            trackingOverlay.postInvalidate();
 
-            computingDetection = false;
-
-            runOnUiThread(
-                new Runnable() {
-                  @Override
-                  public void run() {
-                    showFrameInfo(previewWidth + "x" + previewHeight);
-                    showCropInfo(cropCopyBitmap.getWidth() + "x" + cropCopyBitmap.getHeight());
-                    showInference(lastProcessingTimeMs + "ms");
                   }
-                });
-          }
-        });
+                }
+
+                tracker.trackResults(mappedRecognitions, currTimestamp);  //DOES DRAWING:  OverlayView to dispaly the recognition bounding boxes that have been transformed and stored in LL mappedRecogntions
+                trackingOverlay.postInvalidate();
+
+                computingDetection = false;
+
+                runOnUiThread(
+                        new Runnable() {
+                          @Override
+                          public void run() {
+                            showFrameInfo(previewWidth + "x" + previewHeight);
+                            showCropInfo(cropCopyBitmap.getWidth() + "x" + cropCopyBitmap.getHeight());
+                            showInference(lastProcessingTimeMs + "ms");
+                          }
+                        });
+              }
+            });
 
 
-      //for fun run OPenCV edge detector on the cropCOpyBitmap
-      //note in an Java API based capture Activity you will have a method that is invoked when a
-      // new frame is digitized and you will need to convert the image frame datastructure  object
-      // from Java api to an OpenCV Mat object instance so it can be processed with OpenCV calls
-     //Typically this means converting a Bitmap to an OpenCV Mat.
+    //for fun run OPenCV edge detector on the cropCOpyBitmap
+    //note in an Java API based capture Activity you will have a method that is invoked when a
+    // new frame is digitized and you will need to convert the image frame datastructure  object
+    // from Java api to an OpenCV Mat object instance so it can be processed with OpenCV calls
+    //Typically this means converting a Bitmap to an OpenCV Mat.
     if(cropCopyBitmap == null)
       return;
-     Mat  openCVMatImage =  new Mat (cropCopyBitmap.getWidth(), cropCopyBitmap.getHeight(), CvType.CV_8UC1);
-     Utils.bitmapToMat(cropCopyBitmap, openCVMatImage);
-     //Then you can process it like  the following line that converts an rgb image to greyscale
-     //in this call I am storing the results in the same Mat object
-      Imgproc.cvtColor(openCVMatImage,openCVMatImage, Imgproc.COLOR_RGB2GRAY);
-      //convert back to a Bitmap
-     Utils.matToBitmap(openCVMatImage,cropCopyBitmap);
-     Toast.makeText(this, "check it out", Toast.LENGTH_SHORT);
+    Mat  openCVMatImage =  new Mat (cropCopyBitmap.getWidth(), cropCopyBitmap.getHeight(), CvType.CV_8UC1);
+    Utils.bitmapToMat(cropCopyBitmap, openCVMatImage);
+    //Then you can process it like  the following line that converts an rgb image to greyscale
+    //in this call I am storing the results in the same Mat object
+    Imgproc.cvtColor(openCVMatImage,openCVMatImage, Imgproc.COLOR_RGB2GRAY);
+    //convert back to a Bitmap
+    Utils.matToBitmap(openCVMatImage,cropCopyBitmap);
+    Toast.makeText(this, "check it out", Toast.LENGTH_SHORT);
 
   }
 

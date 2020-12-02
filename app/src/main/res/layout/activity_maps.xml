@@ -9,7 +9,7 @@
         android:id="@+id/flowersClassificationButton"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="@string/covid_id_flowers" />
+        android:text="Emotion" />
 
     <Button
         android:id="@+id/objectDetectButton"
@@ -19,7 +19,7 @@
         android:layout_marginEnd="168dp"
         android:layout_marginStart="67dp"
         android:layout_toEndOf="@+id/flowersClassificationButton"
-        android:text="@string/covid_id_localize" />
+        android:text="Face" />
 
 
     <fragment

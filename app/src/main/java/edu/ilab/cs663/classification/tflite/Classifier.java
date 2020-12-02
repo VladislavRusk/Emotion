@@ -16,10 +16,17 @@ limitations under the License.
 package edu.ilab.cs663.classification.tflite;
 
 import android.app.Activity;
+import android.content.res.AssetFileDescriptor;
+import android.content.res.AssetManager;
 import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.graphics.RectF;
 import android.os.SystemClock;
 import android.os.Trace;
+import android.util.Log;
+import android.content.res.AssetManager;
 
 import org.tensorflow.lite.DataType;
 import org.tensorflow.lite.Interpreter;
@@ -38,14 +45,22 @@ import org.tensorflow.lite.support.image.ops.Rot90Op;
 import org.tensorflow.lite.support.label.TensorLabel;
 import org.tensorflow.lite.support.tensorbuffer.TensorBuffer;
 
+import java.io.BufferedReader;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
+import java.util.Vector;
 
 /** A classifier specialized to label images using TensorFlow Lite.
  *
@@ -74,23 +89,29 @@ public abstract class Classifier {
 
   /** The loaded TensorFlow Lite model. */
   private MappedByteBuffer featureExtractorModel;
+  //  private MappedByteBuffer faceFinderModel;
   private MappedByteBuffer lstmModel;
 
   /** Image size along the x axis. */
   private final int imageSizeX;
-  private final int imageSizeX2;
+  private final int frames;
+  // private final int imageSizeX3;
 
   /** Image size along the y axis. */
   private final int imageSizeY;
-  private final int imageSizeY2;
+  private final int featureLength;
+//  private final int imageSizeY3;
   /** Optional GPU delegate for acceleration. */
   private GpuDelegate gpuDelegate = null;
-
+  final int inputSize = 512;
 
   /** An instance of the driver class to run model inference with Tensorflow Lite. */
   protected Interpreter featureTflite;
+  protected Interpreter faceTflite;
   protected Interpreter lstmTflite;
-
+  final AssetManager assetManager = null;
+  final float confidenceInterval = 0.5f;
+  final int classes;
 
   /** Options for configuring the Interpreter. */
   private final Interpreter.Options tfliteOptions = new Interpreter.Options();
@@ -100,14 +121,59 @@ public abstract class Classifier {
 
   /** Input image TensorBuffer. */
   private TensorImage inputImageBuffer;
-  public float[][][] lstmInput = new float[1][1][1024]; // LSTM INPUT VERY IMPORTANT
+  private TensorImage inputImageBuffer3;
+  public float[][][] lstmInput = null; // LSTM INPUT VERY IMPORTANT
   public int frame = 0; // FRAME NUMBER
+  public int frame2 = 0;
   /** Output probability TensorBuffer. */
-  private final TensorBuffer outputProbabilityBuffer;
-  private final TensorBuffer outputProbabilityBuffer2;
+//  private final TensorBuffer outputProbabilityBuffer;
+//  private final TensorBuffer outputProbabilityBuffer2;
+//  private final TensorBuffer outputProbabilityBuffer3;
+  public int NUM_DETECTIONS = 10;
 
+  private static final float IMAGE_MEAN = 128.0f;
+  private static final float IMAGE_STD = 128.0f;
+  float[][][] outputLocations = new float[1][NUM_DETECTIONS][4];
+  float[][] outputClasses = new float[1][NUM_DETECTIONS];
+  float[][] outputScores = new float[1][NUM_DETECTIONS];
+  float[] numDetections = new float[1];
+  Bitmap resizedbitmap = null;
+  Bitmap image = null;
+
+  Bitmap resized;
+  Bitmap bitmap1 = null;
+  Bitmap bitmap2 = null;
+  Bitmap bitmap3 = null;
+  Bitmap bitmap4 = null;
+  Bitmap bitmap5 = null;
+  Bitmap bitmap6 = null;
+  Bitmap bitmap7 = null;
+  Bitmap bitmap8 = null;
+  Bitmap bitmap9 = null;
+  Bitmap bitmap10 = null;
+  private Vector<String> labels2 = new Vector<String>();
+//  private Vector<String> labels = new Vector<String>();
+
+  int[] sensorArray = new int[10];
+  int foundFace = 0;
+
+  private int[] intValues;
+  //  public int inputSize = 512;
+  private ByteBuffer imgData;
   /** Processer to apply post processing of the output probability. */
-  private final TensorProcessor probabilityProcessor2;
+//  private final TensorProcessor probabilityProcessor2;
+
+  private static MappedByteBuffer loadModelFile(AssetManager assets, String modelFilename)
+          throws IOException {
+    AssetFileDescriptor fileDescriptor = assets.openFd(modelFilename);
+    FileInputStream inputStream = new FileInputStream(fileDescriptor.getFileDescriptor());
+    FileChannel fileChannel = inputStream.getChannel();
+    long startOffset = fileDescriptor.getStartOffset();
+    long declaredLength = fileDescriptor.getDeclaredLength();
+    return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength);
+  }
+
+
 
   /**
    * Creates a classifier with the provided configuration.
@@ -117,10 +183,10 @@ public abstract class Classifier {
    * @param numThreads The number of threads to use for classification.
    * @return A classifier with the desired configuration.
    */
-  public static Classifier create(Activity activity, Device device, int numThreads)
-      throws IOException {
+  public static Classifier create(Activity activity, Device device, int numThreads,AssetManager assetManager)
+          throws IOException {
 
-    return new ClassifierFloatMobileNet(activity, device, numThreads);
+    return new ClassifierFloatMobileNet(activity, device, numThreads, assetManager);
   }
 
   /** An immutable result returned by a Classifier describing what was recognized. */
@@ -203,7 +269,7 @@ public abstract class Classifier {
    * available, a Delegate is created using GpuDelegateHelper.
    *
    * */
-  protected Classifier(Activity activity, Device device, int numThreads) throws IOException {
+  protected Classifier(Activity activity, Device device, int numThreads,AssetManager assetManager) throws IOException {
     featureExtractorModel = FileUtil.loadMappedFile(activity, getModelPath());
     switch (device) {
       case GPU:
@@ -220,14 +286,9 @@ public abstract class Classifier {
     // Create a TFLite interpreter instance
     featureTflite = new Interpreter(featureExtractorModel, tfliteOptions);
 
-    // Loads labels out from the label file.
-//    labels = FileUtil.loadLabels(activity, getLabelPath()); // Igonore Possibly?????
-
-    // Reads type and shape of input and output tensors, respectively.
-    //Determine the necessary input image size from the first layer imageShape.
-    // get shape and data type of model lines 223-229
     int imageTensorIndex = 0;
     int[] imageShape = featureTflite.getInputTensor(imageTensorIndex).shape(); // {1, height, width, 3} get input tensor
+
 
     imageSizeY = imageShape[1];
     imageSizeX = imageShape[2];
@@ -243,150 +304,249 @@ public abstract class Classifier {
     // Creates the input tensor.
     inputImageBuffer = new TensorImage(imageDataType);
 
-    // Creates the output tensor and its processor.
-    outputProbabilityBuffer = TensorBuffer.createFixedSize(probabilityShape, probabilityDataType);
-
-    // Creates the post processor for the output probability.
-//    probabilityProcessor = new TensorProcessor.Builder().add(getPostprocessNormalizeOp()).build();
-//*************************************************************************************************
-//*************************************************************************************************
 // **********************************CREATE LSTM MODEL HERE ***************************************
-//*************************************************************************************************
-//*************************************************************************************************
-//*************************************************************************************************
-    lstmModel = FileUtil.loadMappedFile(activity, "LModel2.tflite");
-    tfliteOptions.setNumThreads(numThreads);
+
+    lstmModel = FileUtil.loadMappedFile(activity, "lstmModel.tflite");
+//    tfliteOptions.setNumThreads(numThreads);
 
     // Create a TFLite interpreter instance
     lstmTflite = new Interpreter(lstmModel, tfliteOptions);
 
     // Loads labels out from the label file.
     labels = FileUtil.loadLabels(activity, getLabelPath()); // Igonore Possibly?????
+    classes = labels.size();
 
-    // Reads type and shape of input and output tensors, respectively.
-    //Determine the necessary input image size from the first layer imageShape.
-    // get shape and data type of model lines 223-229
     int imageTensorIndex2 = 0;
     int[] imageShape2 = lstmTflite.getInputTensor(imageTensorIndex2).shape(); // {10, 1, width, 3} get input tensor
 
-    imageSizeY2 = imageShape2[1];
-    imageSizeX2 = imageShape2[2];
+    frames = imageShape2[1];
+    featureLength = imageShape2[2];
+    lstmInput = new float[frames][1][featureLength];
 
-    DataType imageDataType2 = lstmTflite.getInputTensor(imageTensorIndex2).dataType();
+// **********************************CREATE face finder MODEL HERE ***************************************
 
-
-    int probabilityTensorIndex2 = 0;
-    int[] probabilityShape2 =
-            lstmTflite.getOutputTensor(probabilityTensorIndex2).shape(); // {1, 1024} the shape of output
-    DataType probabilityDataType2 = lstmTflite.getOutputTensor(probabilityTensorIndex2).dataType(); // datatype
-
-    // Creates the input tensor.
-//        inputImageBuffer = new float(imageDataType);
-
-    // Creates the output tensor and its processor.
-    outputProbabilityBuffer2 = TensorBuffer.createFixedSize(probabilityShape2, probabilityDataType2);
-
-    // Creates the post processor for the output probability.
-    probabilityProcessor2 = new TensorProcessor.Builder().add(getPostprocessNormalizeOp()).build();
+    String modelFilename = "efficientDet.tflite";
+    String labelFilename = "file:///android_asset/labelmap.txt";
 
 
 
+    String actualFilename = labelFilename.split("file:///android_asset/")[1];
+    InputStream labelsInput = assetManager.open(actualFilename);
+    BufferedReader br = new BufferedReader(new InputStreamReader(labelsInput));
+    String line;
+    while ((line = br.readLine()) != null) {
+      labels2.add(line);
+    }
+    br.close();
 
+    faceTflite = new Interpreter(loadModelFile(assetManager, modelFilename));
 
+    int numBytesPerChannel = 4; // Floating point
 
-    LOGGER.d("Created a Tensorflow Lite Image Classifier.");
+    imgData = ByteBuffer.allocateDirect(1 * inputSize * inputSize * 3 * numBytesPerChannel);
+    imgData.order(ByteOrder.nativeOrder());
+    intValues = new int[inputSize * inputSize];
 
-
+//    tfLite.setNumThreads(NUM_THREADS);
+    outputLocations = new float[1][NUM_DETECTIONS][4];
+    outputClasses = new float[1][NUM_DETECTIONS];
+    outputScores = new float[1][NUM_DETECTIONS];
+    numDetections = new float[1];
 
 
   }
 
   public List<Recognition> recognizeImageLSTM() {
-    // Logs this method so that it can be analyzed with systrace.
-    Trace.beginSection("recognizeImage");
-
-    Trace.beginSection("loadImage");
-    long startTimeForLoadImage = SystemClock.uptimeMillis();
-//        inputImageBuffer = loadImage(bitmap, sensorOrientation);
-    long endTimeForLoadImage = SystemClock.uptimeMillis();
-    Trace.endSection();
-    LOGGER.v("Timecost to load the image: " + (endTimeForLoadImage - startTimeForLoadImage));
-
-    // Runs the inference call.
-    Trace.beginSection("runInference");
-    long startTimeForReference = SystemClock.uptimeMillis();
-    float[][] test = new float[1][7];
+    float[][] test = new float[1][classes];
     // Run TFLite inference passing in the processed image.
     lstmTflite.run(lstmInput, test);
-    long endTimeForReference = SystemClock.uptimeMillis();
-    Trace.endSection();
-    LOGGER.v("Timecost to run model inference: " + (endTimeForReference - startTimeForReference));
 
-    // Gets the map of label and probability.
-    // Use TensorLabel from TFLite Support Library to associate the probabilities
-    //       with category labels
-    //labeledProbability is the object that maps each label to its probability.
-    //     The TensorFlow Lite Support Library provides a convenient utility to convert from the model
-    //     output to a human-readable probability map. We later use the getTopKProbability(..) method to
-    //     extract the top-K most probable labels from labeledProbability.
     Map<String, Float> labeledProbability = makeProb(test[0]);
-//            new TensorLabel(labels, test).getMapWithFloatValue();
 
-    Trace.endSection();
-
-    // Gets top-k results.
     return getTopKProbability(labeledProbability);
   }
 
+
   public Map<String, Float> makeProb(float[] results) {
     Map<String,Float> temp = new HashMap<String, Float>();
-    String[] theLabels = {"disgust", "fear", "happiness", "others", "repression", "sadness", "surprise"};
-    for (int i = 0; i < 7; i++) {
-      temp.put(theLabels[i], results[i]);
+//    String[] theLabels = {"disgust", "fear", "happiness", "others", "repression", "sadness", "surprise"};
+    for (int i = 0; i < classes; i++) {
+      temp.put(labels.get(i) + String.valueOf(foundFace), results[i]);
     }
     return temp;
   }
 
 
+  public List<Recognition> recognizeFaceImage(final Bitmap bitmap, int sensorOrientation) {
+    intValues = new int[inputSize * inputSize];
+    bitmap.getPixels(intValues, 0, bitmap.getWidth(), 0, 0, bitmap.getWidth(), bitmap.getHeight());
+
+    imgData.rewind();
+    for (int i = 0; i < inputSize; ++i) {
+      for (int j = 0; j < inputSize; ++j) {
+        int pixelValue = intValues[i * inputSize + j];
+
+        imgData.putFloat((((pixelValue >> 16) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
+        imgData.putFloat((((pixelValue >> 8) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
+        imgData.putFloat(((pixelValue & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
+
+      }
+    }
+    outputLocations = new float[1][NUM_DETECTIONS][4];
+    outputClasses = new float[1][NUM_DETECTIONS];
+    outputScores = new float[1][NUM_DETECTIONS];
+    numDetections = new float[1];
+
+    Object[] inputArray = {imgData};
+    Map<Integer, Object> outputMap = new HashMap<>();
+    outputMap.put(0, outputLocations);
+    outputMap.put(1, outputClasses);
+    outputMap.put(2, outputScores);
+    outputMap.put(3, numDetections);
+    faceTflite.runForMultipleInputsOutputs(inputArray, outputMap);
+
+    int numDetectionsOutput = Math.min(NUM_DETECTIONS, (int) numDetections[0]); // cast from float to integer, use min for safety
+    int max = 0;
+    if (numDetectionsOutput > 0) {
+      max = 0;
+      for (int i = 0; i < numDetectionsOutput; i++) {
+        if (outputScores[0][max] < outputScores[0][i]) {
+          max = i;
+        }
+      }
+    }
+    if (numDetectionsOutput > 0 && outputScores[0][max] > confidenceInterval) {
+      int left = (int)(outputLocations[0][max][1] * inputSize);
+      int top = (int)(outputLocations[0][max][0] * inputSize);
+      int width = ((int)(outputLocations[0][max][3] * inputSize)) - left;
+      int height = ((int)(outputLocations[0][max][2] * inputSize)) - top;
+      if ((width + left) < inputSize && (height + top) < inputSize && left > -1 && top > -1) {
+        resizedbitmap = Bitmap.createBitmap(bitmap, left, top, width, height);
+        resizedbitmap = Bitmap.createScaledBitmap(resizedbitmap, imageSizeX, imageSizeY, true);
+        foundFace += 1;
+
+      } else {
+        resizedbitmap = Bitmap.createScaledBitmap(bitmap, imageSizeX, imageSizeY, true);
+      }
+
+      return recognizeImage(resizedbitmap, sensorOrientation);
+    } else {
+      resizedbitmap = Bitmap.createScaledBitmap(bitmap, imageSizeX, imageSizeY, true);
+      return recognizeImage(resizedbitmap, sensorOrientation);
+    }
+//    return recognitions;
+  }
+
+
+
+
+
+  public List<Recognition> getFrames(final Bitmap bitmap, int sensorOrientation) {
+    if (frame == 0) {
+      foundFace = 0;
+      bitmap1 = Bitmap.createBitmap(bitmap);
+      sensorArray[frame] = sensorOrientation;
+    } else if (frame == 1) {
+      bitmap2 = Bitmap.createBitmap(bitmap);
+      sensorArray[frame] = sensorOrientation;
+    } else if (frame == 2) {
+      bitmap3 = Bitmap.createBitmap(bitmap);
+      sensorArray[frame] = sensorOrientation;
+    } else if (frame == 3) {
+      bitmap4 = Bitmap.createBitmap(bitmap);
+      sensorArray[frame] = sensorOrientation;
+    } else if (frame == 4) {
+      bitmap5 = Bitmap.createBitmap(bitmap);
+      sensorArray[frame] = sensorOrientation;
+    } else if (frame == 5) {
+      bitmap6 = Bitmap.createBitmap(bitmap);
+      sensorArray[frame] = sensorOrientation;
+    } else if (frame == 6) {
+      bitmap7 = Bitmap.createBitmap(bitmap);
+      sensorArray[frame] = sensorOrientation;
+    } else if (frame == 7) {
+      bitmap8 = Bitmap.createBitmap(bitmap);
+      sensorArray[frame] = sensorOrientation;
+    } else if (frame == 8) {
+      bitmap9 = Bitmap.createBitmap(bitmap);
+      sensorArray[frame] = sensorOrientation;
+    } else if (frame == 9) {
+      bitmap10 = Bitmap.createBitmap(bitmap);
+      sensorArray[frame] = sensorOrientation;
+    } else {
+      frame = 0;
+      for (int i = 0; i < frames; i++) {
+        if (i == 0) {
+          bitmap1 = Bitmap.createScaledBitmap(bitmap1, inputSize, inputSize, true);
+          bitmap1 = RotateBitmap(bitmap1,sensorArray[i]);
+          recognizeFaceImage(bitmap1,sensorArray[i]);
+        } else if (i == 1) {
+          bitmap2 = Bitmap.createScaledBitmap(bitmap2,  inputSize, inputSize, true);
+          bitmap2 = RotateBitmap(bitmap2,sensorArray[i]);
+          recognizeFaceImage(bitmap2,sensorArray[i]);
+        } else if (i == 2) {
+          bitmap3 = Bitmap.createScaledBitmap(bitmap3, inputSize, inputSize, true);
+          bitmap3 = RotateBitmap(bitmap3,sensorArray[i]);
+          recognizeFaceImage(bitmap3,sensorArray[i]);
+        } else if (i == 3) {
+          bitmap4 = Bitmap.createScaledBitmap(bitmap4,  inputSize, inputSize, true);
+          bitmap4 = RotateBitmap(bitmap4,sensorArray[i]);
+          recognizeFaceImage(bitmap4,sensorArray[i]);
+        } else if (i == 4) {
+          bitmap5 = Bitmap.createScaledBitmap(bitmap5,  inputSize, inputSize, true);
+          bitmap5 = RotateBitmap(bitmap5,sensorArray[i]);
+          recognizeFaceImage(bitmap5,sensorArray[i]);
+        } else if (i== 5) {
+          bitmap6 = Bitmap.createScaledBitmap(bitmap6,  inputSize, inputSize, true);
+          bitmap6 = RotateBitmap(bitmap6,sensorArray[i]);
+          recognizeFaceImage(bitmap6,sensorArray[i]);
+        } else if (i== 6) {
+          bitmap7 = Bitmap.createScaledBitmap(bitmap7,  inputSize, inputSize, true);
+          bitmap7 = RotateBitmap(bitmap7,sensorArray[i]);
+          recognizeFaceImage(bitmap7,sensorArray[i]);
+        } else if (i == 7) {
+          bitmap8 = Bitmap.createScaledBitmap(bitmap8,  inputSize, inputSize, true);
+          bitmap8 = RotateBitmap(bitmap8,sensorArray[i]);
+          recognizeFaceImage(bitmap8,sensorArray[i]);
+        } else if (i == 8) {
+          bitmap9 = Bitmap.createScaledBitmap(bitmap9,  inputSize, inputSize, true);
+          bitmap9 = RotateBitmap(bitmap9,sensorArray[i]);
+          recognizeFaceImage(bitmap9,sensorArray[i]);
+        } else if (i == 9) {
+          bitmap10 = Bitmap.createScaledBitmap(bitmap10,  inputSize, inputSize, true);
+          bitmap10 = RotateBitmap(bitmap10,sensorArray[i]);
+          return recognizeFaceImage(bitmap10,sensorArray[i]);
+        }
+      }
+    }
+
+    frame+= 1;
+
+    return null;
+  }
+
+  public static Bitmap RotateBitmap(Bitmap source, float angle)
+  {
+    Matrix matrix = new Matrix();
+    matrix.postRotate(angle);
+    return Bitmap.createBitmap(source, 0, 0, source.getWidth(), source.getHeight(), matrix, true);
+  }
+
 
   /** Runs inference and returns the classification results. */
   public List<Recognition> recognizeImage(final Bitmap bitmap, int sensorOrientation) {
-      // Logs this method so that it can be analyzed with systrace.
-      Trace.beginSection("recognizeImage");
-
-      Trace.beginSection("loadImage");
-      long startTimeForLoadImage = SystemClock.uptimeMillis();
+    if (frame2 < frames) {
       inputImageBuffer = loadImage(bitmap, sensorOrientation);
-      long endTimeForLoadImage = SystemClock.uptimeMillis();
-      Trace.endSection();
-      LOGGER.v("Timecost to load the image: " + (endTimeForLoadImage - startTimeForLoadImage));
+      featureTflite.run(inputImageBuffer.getBuffer(), lstmInput[frame2]);
 
-      // Runs the inference call.
-      Trace.beginSection("runInference");
-      long startTimeForReference = SystemClock.uptimeMillis();
-      //    float[][][] test = new float[1][1][1024];
-      // Run TFLite inference passing in the processed image.
-      featureTflite.run(inputImageBuffer.getBuffer(), lstmInput[0]);
+      if (frame2 == 9) {
+        frame2 = 0;
+        return recognizeImageLSTM();
+      }
+      frame2 += 1;
+    }
+    return null;
 
-      long endTimeForReference = SystemClock.uptimeMillis();
-      Trace.endSection();
-      LOGGER.v("Timecost to run model inference: " + (endTimeForReference - startTimeForReference));
-
-      // Gets the map of label and probability.
-      // Use TensorLabel from TFLite Support Library to associate the probabilities
-      //       with category labels
-      //labeledProbability is the object that maps each label to its probability.
-      //     The TensorFlow Lite Support Library provides a convenient utility to convert from the model
-      //     output to a human-readable probability map. We later use the getTopKProbability(..) method to
-      //     extract the top-K most probable labels from labeledProbability.
-
-      Trace.endSection();
-
-      frame += 1;
-      return recognizeImageLSTM();
-
-    // Gets top-k results.
-//    return test[0];
   }
 
   /** Closes the interpreter and model to release resources. */
@@ -460,15 +620,15 @@ public abstract class Classifier {
   static List<Recognition> getTopKProbability(Map<String, Float> labelProb) {
     // Find the best classifications.
     PriorityQueue<Recognition> pq =
-        new PriorityQueue<>(
-            MAX_RESULTS,
-            new Comparator<Recognition>() {
-              @Override
-              public int compare(Recognition lhs, Recognition rhs) {
-                // Intentionally reversed to put high confidence at the head of the queue.
-                return Float.compare(rhs.getConfidence(), lhs.getConfidence());
-              }
-            });
+            new PriorityQueue<>(
+                    MAX_RESULTS,
+                    new Comparator<Recognition>() {
+                      @Override
+                      public int compare(Recognition lhs, Recognition rhs) {
+                        // Intentionally reversed to put high confidence at the head of the queue.
+                        return Float.compare(rhs.getConfidence(), lhs.getConfidence());
+                      }
+                    });
 
     for (Map.Entry<String, Float> entry : labelProb.entrySet()) {
       pq.add(new Recognition("" + entry.getKey(), entry.getKey(), entry.getValue(), null));

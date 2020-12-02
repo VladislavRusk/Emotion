@@ -45,6 +45,7 @@ import android.widget.LinearLayout;
 import android.widget.Spinner;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.widget.Button;
 
 import com.google.android.material.bottomsheet.BottomSheetBehavior;
 
@@ -104,6 +105,10 @@ public abstract class CameraActivity extends AppCompatActivity
   private Device device = Device.CPU;
   private int numThreads = -1;
 
+  TextView ourText;
+  Button emotionDetection;
+
+
   @Override
   protected void onCreate(final Bundle savedInstanceState) {
     LOGGER.d("onCreate " + this);
@@ -111,6 +116,17 @@ public abstract class CameraActivity extends AppCompatActivity
     getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
     setContentView(R.layout.tfe_ic_activity_camera);
+    emotionDetection = findViewById(R.id.emotion);
+
+        emotionDetection.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+
+              if (ClassifierActivity.counter == 0) {
+                ClassifierActivity.counter = 1;
+              }
+            }
+        });
 
     if (hasPermission()) {
       setFragment();

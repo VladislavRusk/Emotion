@@ -19,7 +19,6 @@ package edu.ilab.cs663.classification;
 
 import android.content.Context;
 import android.content.ContextWrapper;
-import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.Bitmap.Config;
 import android.graphics.Typeface;
@@ -55,27 +54,27 @@ import edu.ilab.cs663.classification.env.BorderedText;
 import edu.ilab.cs663.classification.env.Logger;
 import edu.ilab.cs663.classification.tflite.Classifier;
 import edu.ilab.cs663.classification.tflite.Classifier.Device;
-//import edu.ilab.cs663.classification.tflite.Classifier2;
 
 import edu.ilab.cs663.data.CovidRecord;
 import edu.ilab.cs663.storage.FirebaseStorageUtil;
 
-public class ClassifierActivity extends CameraActivity implements OnImageAvailableListener {
+public class ClassifierActivity extends edu.ilab.cs663.classification.CameraActivity implements OnImageAvailableListener {
 
     public static String imageFileURL;
     private static int op= 0;
-//    Queue<float[][]> qe = new LinkedList<float[][]>();
+    //    Queue<float[][]> qe = new LinkedList<float[][]>();
     // flag for pushing records
     int flag = 0;
     private static final Logger LOGGER = new Logger();
     private static final Size DESIRED_PREVIEW_SIZE = new Size(640, 480);
     private static final float TEXT_SIZE_DIP = 10;
     private Bitmap rgbFrameBitmap = null;
+    Bitmap resized = null;
     static long lastProcessingTimeMs = 0;
     static long startTime = 0;
     private Integer sensorOrientation;
     private Classifier classifier;
-    public int counter = 0;
+    public static int counter = 0;
     public int frame = 0;
     public List<Classifier.Recognition> temp;
     private BorderedText borderedText;
@@ -83,25 +82,9 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
     private int imageSizeX;
     /** Input image size of the model along y axis. */
     private int imageSizeY;
-
     TextView ourText;
     Button emotionDetection;
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.tfe_ic_activity_camera);
-
-        ourText = findViewById(R.id.emotionText);
-        emotionDetection = findViewById(R.id.emotion);
-
-        emotionDetection.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                ourText.setText("pressed");
-            }
-        });
-    }
 
     @Override
     protected int getLayoutId() {
@@ -126,13 +109,9 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
             LOGGER.e("No classifier on preview!");
             return;
         }
-        if (classifier == null) {
-            LOGGER.e("No classifier on preview!");
-            return;
-        }
 
         //previewWidth = size.getWidth();
-       // previewHeight = size.getHeight();
+        // previewHeight = size.getHeight();
         previewWidth = size.getWidth();
         previewHeight = size.getHeight();
         sensorOrientation = rotation - getScreenOrientation();
@@ -175,41 +154,31 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
                     public void run() {
                         if (classifier != null) {
                             startTime = SystemClock.elapsedRealtime();
-                                    //SystemClock.uptimeMillis();
-                            counter += 1;
+                            //SystemClock.uptimeMillis();
+                            if (counter > 0)
+                                counter += 1;
                             //cs663:  ADD any OTHER preprocessing here
 
 
                             //Calling the Classifier
-                            Bitmap resized = Bitmap.createScaledBitmap(rgbFrameBitmap, imageSizeX, imageSizeY, true);
-                            if (counter < 60 && counter >= 50) {
-                                temp = classifier.recognizeImage(rgbFrameBitmap, sensorOrientation);
+//                            Bitmap resized = Bitmap.createBitmap(512, 512, Config.ARGB_8888);
+
+
+
+
+                            if (counter <= 12 && counter >= 2) {
+                                temp = classifier.getFrames(rgbFrameBitmap, sensorOrientation);
                             }
-                            if (counter == 80)
+                            if (counter == 300)
                                 counter = 0;
-//                            qe.add(results);
-//                            if (qe.size() >= 11)
-//                                qe.remove();
-//                            LOGGER.v("Detect: %s", results);
-//                            if (counter < 510 && counter >= 500) {
-//                                classifier.recognizeImage(rgbFrameBitmap, sensorOrientation,lstmInput,(counter - 500));
 
-
- //                           }
-//                            if (counter == 510) {
-//                                temp = classifier2.recognizeImage(lstmInput);
-//                              counter = 0;
-//                            }
-
-                            //cs663:  ADD  Any Post Processing (after recognition)  code here
-                            //Following code creates  display that shows results
                             runOnUiThread(
                                     new Runnable() {
                                         @Override
                                         public void run() {
                                             //DISPLAY information including recognition results
-
-                                            showResultsInBottomSheet(temp);
+                                            if (temp != null)
+                                                showResultsInBottomSheet(temp);
 
                                             showFrameInfo(previewWidth + "x" + previewHeight);
                                             showCropInfo(imageSizeX + "x" + imageSizeY);
@@ -231,7 +200,7 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
                                     });
                             lastProcessingTimeMs = startTime;
                         }
-                       readyForNextImage();
+                        readyForNextImage();
                     }
                 });
     }
@@ -245,6 +214,7 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
         final Device device = getDevice();
         final int numThreads = getNumThreads();
         runInBackground(() -> recreateClassifier(device, numThreads));
+
     }
 
     private void recreateClassifier(Device device, int numThreads) {
@@ -256,7 +226,7 @@ public class ClassifierActivity extends CameraActivity implements OnImageAvailab
         try {
             LOGGER.d(
                     "Creating classifier (device=%s, numThreads=%d)", device, numThreads);
-            classifier = Classifier.create(this, device, numThreads);
+            classifier = Classifier.create(this, device, numThreads,getAssets());
 //            classifier2 = Classifier2.create(this, device, numThreads);
         } catch (IOException e) {
             LOGGER.e(e, "Failed to create classifier.");

@@ -34,19 +34,12 @@
             tools:context="org.tensorflow.lite.examples.classification.CameraActivity" >
 
 
-            <TextView
-                android:id="@+id/emotionText"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="550dp"
-                android:layout_marginLeft="170dp"
-                android:textColor="#F00"
-                android:text="emotionText" />
+
             <Button
                 android:id="@+id/emotion"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="500dp"
+                android:layout_marginTop="0dp"
                 android:layout_marginLeft="140dp"
                 android:text="Detect Emotion" />
 
@@ -61,10 +54,10 @@
             android:layout_alignParentTop="true"
             android:background="@color/tfe_semi_transparent">
 
-            <ImageView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:src="@drawable/android_banner" />
+<!--            <ImageView-->
+<!--                android:layout_width="wrap_content"-->
+<!--                android:layout_height="wrap_content"-->
+<!--                android:src="@drawable/android_banner" />-->
         </androidx.appcompat.widget.Toolbar>
 
     </RelativeLayout>

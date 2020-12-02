@@ -16,6 +16,7 @@ limitations under the License.
 package edu.ilab.cs663.classification.tflite;
 
 import android.app.Activity;
+import android.content.res.AssetManager;
 
 import org.tensorflow.lite.support.common.TensorOperator;
 import org.tensorflow.lite.support.common.ops.NormalizeOp;
@@ -43,16 +44,16 @@ public class ClassifierFloatMobileNet extends Classifier {
    *
    * @param activity
    */
-  public ClassifierFloatMobileNet(Activity activity, Device device, int numThreads)
-      throws IOException {
-    super(activity, device, numThreads);
+  public ClassifierFloatMobileNet(Activity activity, Device device, int numThreads,AssetManager assetManager)
+          throws IOException {
+    super(activity, device, numThreads,assetManager);
   }
 
   // TODO: Specify model.tflite as the model file and labels.txt as the label file
 
   @Override
   protected String getModelPath() {
-    return "fModel3.tflite";
+    return "featureModel.tflite";
   }
 
 

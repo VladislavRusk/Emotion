@@ -20,8 +20,11 @@ import android.content.res.AssetManager;
 import android.graphics.Bitmap;
 import android.graphics.RectF;
 import android.os.Trace;
+import android.util.Log;
 
 import org.tensorflow.lite.Interpreter;
+import org.tensorflow.lite.support.common.FileUtil;
+
 import edu.ilab.cs663.localize.env.Logger;
 
 import java.io.BufferedReader;
@@ -85,7 +88,7 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
 
   /** Memory-map the model file in Assets. */
   private static MappedByteBuffer loadModelFile(AssetManager assets, String modelFilename)
-      throws IOException {
+          throws IOException {
     AssetFileDescriptor fileDescriptor = assets.openFd(modelFilename);
     FileInputStream inputStream = new FileInputStream(fileDescriptor.getFileDescriptor());
     FileChannel fileChannel = inputStream.getChannel();
@@ -104,12 +107,12 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
    * @param isQuantized Boolean representing model is quantized or not
    */
   public static Classifier create(
-      final AssetManager assetManager,
-      final String modelFilename,
-      final String labelFilename,
-      final int inputSize,
-      final boolean isQuantized)
-      throws IOException {
+          final AssetManager assetManager,
+          final String modelFilename,
+          final String labelFilename,
+          final int inputSize,
+          final boolean isQuantized)
+          throws IOException {
     final TFLiteObjectDetectionAPIModel d = new TFLiteObjectDetectionAPIModel();
 
     String actualFilename = labelFilename.split("file:///android_asset/")[1];
@@ -125,6 +128,7 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     d.inputSize = inputSize;
 
     try {
+//      faceFinderModel = FileUtil.loadMappedFile(activity, "efficientDet.tflite");
       d.tfLite = new Interpreter(loadModelFile(assetManager, modelFilename));
     } catch (Exception e) {
       throw new RuntimeException(e);
@@ -138,9 +142,9 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
     } else {
       numBytesPerChannel = 4; // Floating point
     }
-    d.imgData = ByteBuffer.allocateDirect(1 * d.inputSize * d.inputSize * 3 * numBytesPerChannel);
+    d.imgData = ByteBuffer.allocateDirect(1 * 512 * 512 * 3 * numBytesPerChannel);
     d.imgData.order(ByteOrder.nativeOrder());
-    d.intValues = new int[d.inputSize * d.inputSize];
+    d.intValues = new int[512 * 512];
 
     d.tfLite.setNumThreads(NUM_THREADS);
     d.outputLocations = new float[1][NUM_DETECTIONS][4];
@@ -200,31 +204,31 @@ public class TFLiteObjectDetectionAPIModel implements Classifier {
 
     // Show the best detections.
     // after scaling them back to the input size.
-      
+
     // You need to use the number of detections from the output and not the NUM_DETECTONS variable declared on top
-      // because on some models, they don't always output the same total number of detections
-      // For example, your model's NUM_DETECTIONS = 20, but sometimes it only outputs 16 predictions
-      // If you don't use the output's numDetections, you'll get nonsensical data
+    // because on some models, they don't always output the same total number of detections
+    // For example, your model's NUM_DETECTIONS = 20, but sometimes it only outputs 16 predictions
+    // If you don't use the output's numDetections, you'll get nonsensical data
     int numDetectionsOutput = Math.min(NUM_DETECTIONS, (int) numDetections[0]); // cast from float to integer, use min for safety
-      
+    Log.d("ADebugTag", "detections: " + Float.toString(numDetections[0]));
     final ArrayList<Recognition> recognitions = new ArrayList<>(numDetectionsOutput);
     for (int i = 0; i < numDetectionsOutput; ++i) {
       final RectF detection =
-          new RectF(
-              outputLocations[0][i][1] * inputSize,
-              outputLocations[0][i][0] * inputSize,
-              outputLocations[0][i][3] * inputSize,
-              outputLocations[0][i][2] * inputSize);
+              new RectF(
+                      outputLocations[0][i][1] * inputSize,
+                      outputLocations[0][i][0] * inputSize,
+                      outputLocations[0][i][3] * inputSize,
+                      outputLocations[0][i][2] * inputSize);
       // SSD Mobilenet V1 Model assumes class 0 is background class
       // in label file and class labels start from 1 to number_of_classes+1,
       // while outputClasses correspond to class index from 0 to number_of_classes
       int labelOffset = 1;
       recognitions.add(
-          new Recognition(
-              "" + i,
-              labels.get((int) outputClasses[0][i] + labelOffset),
-              outputScores[0][i],
-              detection));
+              new Recognition(
+                      "" + i,
+                      labels.get((int) outputClasses[0][i] + labelOffset),
+                      outputScores[0][i],
+                      detection));
     }
     Trace.endSection(); // "recognizeImage"
     return recognitions;
