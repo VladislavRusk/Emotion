@@ -1,1 +1,1 @@
-# emotion Recognition for Visually impaired people
+# Emotion Recognition for Visually impaired people
